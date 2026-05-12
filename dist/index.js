@@ -6,11 +6,24 @@ const pg_1 = require("pg");
 exports.db = new pg_1.Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    max: 20,
+    max: 10,
+    connectionTimeoutMillis: 10000,
     idleTimeoutMillis: 30000,
 });
+exports.db.on('error', (err) => {
+    console.error('[db] unexpected pool error:', err);
+});
 async function initDB() {
-    const client = await exports.db.connect();
+    let client;
+    try {
+        client = await exports.db.connect();
+        console.log('[db] connected successfully');
+    }
+    catch (err) {
+        console.error('[db] connection failed:', err);
+        console.error('[db] DATABASE_URL was:', process.env.DATABASE_URL?.replace(/:\/\/.*@/, '://***@'));
+        throw err;
+    }
     try {
         await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -43,7 +56,11 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS dm_sender_idx ON dm_messages(sender_id);
       CREATE INDEX IF NOT EXISTS dm_receiver_idx ON dm_messages(receiver_id);
     `);
-        console.log('✓ Database tables ready');
+        console.log('[db] schema ready');
+    }
+    catch (err) {
+        console.error('[db] schema creation failed:', err);
+        throw err;
     }
     finally {
         client.release();
