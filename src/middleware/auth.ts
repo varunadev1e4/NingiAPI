@@ -6,14 +6,15 @@ export interface AuthRequest extends Request {
   username?: string
 }
 
-export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
-  const auth = req.headers.authorization
-  if (!auth?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid authorization header' })
+export function requireAuth(req: AuthRequest, res: Response, next: NextFunction): void {
+  const auth = req.headers['authorization']
+  if (!auth || !auth.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Missing or invalid authorization header' })
+    return
   }
   const token = auth.slice(7)
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET!) as {
+    const payload = jwt.verify(token, process.env.JWT_SECRET as string) as {
       userId: string
       username: string
     }
@@ -21,6 +22,6 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
     req.username = payload.username
     next()
   } catch {
-    return res.status(401).json({ error: 'Token expired or invalid' })
+    res.status(401).json({ error: 'Token expired or invalid' })
   }
 }

@@ -1,44 +1,48 @@
-import 'dotenv/config'
-import express from 'express'
-import { createServer } from 'http'
-import { Server } from 'socket.io'
-import cors from 'cors'
-import { initDB } from './db'
-import authRoutes from './routes/auth'
-import messageRoutes from './routes/messages'
-import { setupSocket } from './socket'
+import { Pool } from 'pg'
 
-const app = express()
-const httpServer = createServer(app)
-
-const io = new Server(httpServer, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
-  transports: ['websocket', 'polling'],
+export const db = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20,
+  idleTimeoutMillis: 30000,
 })
 
-// ── Middleware ─────────────────────────────────────────────────
-app.use(cors({ origin: '*' }))
-app.use(express.json())
+export async function initDB() {
+  const client = await db.connect()
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
 
-// ── Routes ─────────────────────────────────────────────────────
-app.get('/health', (_, res) => res.json({ ok: true, ts: new Date().toISOString() }))
-app.use('/auth', authRoutes)
-app.use('/messages', messageRoutes)
+      CREATE TABLE IF NOT EXISTS messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        url TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
 
-// ── Socket.io ──────────────────────────────────────────────────
-setupSocket(io)
+      CREATE INDEX IF NOT EXISTS messages_url_idx ON messages(url);
+      CREATE INDEX IF NOT EXISTS messages_created_at_idx ON messages(created_at DESC);
 
-// ── Start ──────────────────────────────────────────────────────
-const PORT = Number(process.env.PORT) || 3000
+      CREATE TABLE IF NOT EXISTS dm_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        sender_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        receiver_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
 
-async function start() {
-  await initDB()
-  httpServer.listen(PORT, () => {
-    console.log(`✓ Ningi server running on port ${PORT}`)
-  })
+      CREATE INDEX IF NOT EXISTS dm_sender_idx ON dm_messages(sender_id);
+      CREATE INDEX IF NOT EXISTS dm_receiver_idx ON dm_messages(receiver_id);
+    `)
+    console.log('✓ Database tables ready')
+  } finally {
+    client.release()
+  }
 }
-
-start().catch(err => {
-  console.error('Failed to start server:', err)
-  process.exit(1)
-})

@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { db } from '../db'
@@ -7,7 +7,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth'
 const router = Router()
 
 // POST /auth/signup
-router.post('/signup', async (req, res) => {
+router.post('/signup', async (req: Request, res: Response) => {
   const { email, password, username } = req.body
 
   if (!email || !password || !username) {
@@ -31,7 +31,7 @@ router.post('/signup', async (req, res) => {
     const user = rows[0]
     const token = jwt.sign(
       { userId: user.id, username: user.username },
-      process.env.JWT_SECRET!,
+      process.env.JWT_SECRET as string,
       { expiresIn: '30d' }
     )
     return res.status(201).json({ token, user })
@@ -46,12 +46,11 @@ router.post('/signup', async (req, res) => {
 })
 
 // POST /auth/signin
-router.post('/signin', async (req, res) => {
+router.post('/signin', async (req: Request, res: Response) => {
   const { email, password } = req.body
   if (!email || !password) {
     return res.status(400).json({ error: 'email and password are required' })
   }
-
   try {
     const { rows } = await db.query(
       'SELECT id, email, username, password_hash, created_at FROM users WHERE email = $1',
@@ -63,10 +62,10 @@ router.post('/signin', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash)
     if (!valid) return res.status(401).json({ error: 'Invalid email or password' })
 
-    const { password_hash: _, ...safeUser } = user
+    const { password_hash: _ph, ...safeUser } = user
     const token = jwt.sign(
       { userId: user.id, username: user.username },
-      process.env.JWT_SECRET!,
+      process.env.JWT_SECRET as string,
       { expiresIn: '30d' }
     )
     return res.json({ token, user: safeUser })
@@ -77,7 +76,7 @@ router.post('/signin', async (req, res) => {
 })
 
 // GET /auth/me
-router.get('/me', requireAuth, async (req: AuthRequest, res) => {
+router.get('/me', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { rows } = await db.query(
       'SELECT id, email, username, created_at FROM users WHERE id = $1',

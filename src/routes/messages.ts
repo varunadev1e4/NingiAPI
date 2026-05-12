@@ -1,19 +1,19 @@
-import { Router } from 'express'
+import { Router, Response } from 'express'
 import { db } from '../db'
 import { requireAuth, AuthRequest } from '../middleware/auth'
 
 const router = Router()
 
-// GET /messages?url=... — fetch last 50 messages for a URL
-router.get('/', requireAuth, async (req: AuthRequest, res) => {
-  const { url } = req.query
-  if (!url || typeof url !== 'string') {
+// GET /messages?url=...
+router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
+  const url = req.query['url'] as string | undefined
+  if (!url) {
     return res.status(400).json({ error: 'url query param required' })
   }
   try {
     const { rows } = await db.query(
       `SELECT m.id, m.content, m.url, m.created_at,
-              json_build_object('id', u.id, 'username', u.username) AS user
+              json_build_object('id', u.id, 'username', u.username) AS "user"
        FROM messages m
        JOIN users u ON u.id = m.user_id
        WHERE m.url = $1
@@ -28,9 +28,9 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
   }
 })
 
-// GET /messages/dm/:partnerId — fetch DM history with a user
-router.get('/dm/:partnerId', requireAuth, async (req: AuthRequest, res) => {
-  const { partnerId } = req.params
+// GET /messages/dm/:partnerId
+router.get('/dm/:partnerId', requireAuth, async (req: AuthRequest, res: Response) => {
+  const partnerId = req.params['partnerId'] as string
   try {
     const { rows } = await db.query(
       `SELECT dm.id, dm.content, dm.sender_id, dm.receiver_id, dm.created_at,
